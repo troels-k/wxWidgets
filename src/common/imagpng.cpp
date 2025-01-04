@@ -35,6 +35,24 @@
 // For memcpy
 #include <string.h>
 
+#define C_ASSERT_(n,e) typedef char __C_ASSERT__##n[(e)?1:-1]
+
+/*static*/ const char* const wxPNGHandler::m_text_keys[] =
+{
+   "Title",
+   "Author",
+   "Description",
+   "Copyright",
+   "Comment",
+   "Creation Time",
+   "Software"
+};
+C_ASSERT_(1,WXSIZEOF(wxPNGHandler::m_text_keys) == wxPNGTEXT_ENUMCOUNT);
+
+/*static*/       char** wxPNGHandler::m_text_in  = NULL;
+/*static*/ const char** wxPNGHandler::m_text_out = NULL;
+
+
 // ----------------------------------------------------------------------------
 // local functions
 // ----------------------------------------------------------------------------
@@ -151,7 +169,7 @@ struct wxPNGImageData
         }
     }
 
-    void DoLoadPNGFile(wxImage* image, wxPNGInfoStruct& wxinfo);
+    void DoLoadPNGFile(wxImage* image, wxPNGInfoStruct& wxinfo, char* pText[/*wxPNGTEXT_ENUMCOUNT*/]);
 
     unsigned char** lines;
     unsigned char* m_buf;
@@ -291,7 +309,7 @@ void CopyDataFromPNG(wxImage *image,
 // "returns" its result via wxPNGImageData: use its "ok" field to check
 // whether loading succeeded or failed.
 void
-wxPNGImageData::DoLoadPNGFile(wxImage* image, wxPNGInfoStruct& wxinfo)
+wxPNGImageData::DoLoadPNGFile(wxImage* image, wxPNGInfoStruct& wxinfo, char* pText[/*wxPNGTEXT_ENUMCOUNT*/])
 {
     png_uint_32 width, height = 0;
     int bit_depth, color_type;
@@ -322,6 +340,33 @@ wxPNGImageData::DoLoadPNGFile(wxImage* image, wxPNGInfoStruct& wxinfo)
     png_read_info( png_ptr, info_ptr );
     png_get_IHDR( png_ptr, info_ptr, &width, &height, &bit_depth, &color_type, NULL, NULL, NULL );
 
+    if (pText)
+    {
+        int i;
+        png_textp text_ptr;
+        int num_text;
+
+        for (i = 0; i < wxPNGTEXT_ENUMCOUNT; i++)
+        {
+            free(pText[i]); pText[i] = nullptr;
+        }
+
+        if (png_get_text(png_ptr, info_ptr, &text_ptr, &num_text) > 0)
+        {
+            for (i = 0; i < num_text; i++)
+            {
+                for (int j = 0; j < wxPNGTEXT_ENUMCOUNT; j++)
+                {
+                    if (0 == _stricmp(text_ptr[i].key, wxPNGHandler::m_text_keys[j]))
+                    {
+                        pText[j] = _strdup(text_ptr[i].text);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     png_set_expand(png_ptr);
     png_set_gray_to_rgb(png_ptr);
     png_set_strip_16( png_ptr );
@@ -341,6 +386,28 @@ wxPNGImageData::DoLoadPNGFile(wxImage* image, wxPNGInfoStruct& wxinfo)
 
     png_read_image( png_ptr, lines );
     png_read_end( png_ptr, info_ptr );
+
+    if (pText)
+    {
+        int i;
+        png_textp text_ptr;
+        int num_text;
+
+        if (png_get_text(png_ptr, info_ptr, &text_ptr, &num_text) > 0)
+        {
+            for (i = 0; i < num_text; i++)
+            {
+                for (int j = 0; j < wxPNGTEXT_ENUMCOUNT; j++)
+                {
+                    if (0 == _stricmp(text_ptr[i].key, wxPNGHandler::m_text_keys[j]))
+                    {
+                        pText[j] = _strdup(text_ptr[i].text);
+                        break;
+                    }
+                }
+            }
+        }
+    }
 
 #if wxUSE_PALETTE
     if (color_type == PNG_COLOR_TYPE_PALETTE)
@@ -415,20 +482,23 @@ wxPNGImageData::DoLoadPNGFile(wxImage* image, wxPNGInfoStruct& wxinfo)
 
     // This will indicate to the caller that loading succeeded.
     ok = true;
+
+    //png_read_end(png_ptr, info_ptr);
 }
 
 bool
 wxPNGHandler::LoadFile(wxImage *image,
                        wxInputStream& stream,
                        bool verbose,
-                       int WXUNUSED(index))
+                       int WXUNUSED(index),
+                       char* pText[/*wxPNGTEXT_ENUMCOUNT*/])
 {
     wxPNGInfoStruct wxinfo;
     wxinfo.verbose = verbose;
     wxinfo.stream.in = &stream;
 
     wxPNGImageData data;
-    data.DoLoadPNGFile(image, wxinfo);
+    data.DoLoadPNGFile(image, wxinfo, pText);
 
     if ( !data.ok )
     {
@@ -490,7 +560,7 @@ static long PaletteAdd(PaletteMap *palette, const png_color_8& clr)
 // writing PNGs
 // ----------------------------------------------------------------------------
 
-bool wxPNGHandler::SaveFile( wxImage *image, wxOutputStream& stream, bool verbose )
+bool wxPNGHandler::SaveFile( wxImage *image, wxOutputStream& stream, bool verbose, const char* pText[/*wxPNGTEXT_ENUMCOUNT*/] )
 {
     wxPNGInfoStruct wxinfo;
 
@@ -537,6 +607,80 @@ bool wxPNGHandler::SaveFile( wxImage *image, wxOutputStream& stream, bool verbos
     // NB: please see the comment near wxPNGInfoStruct declaration for
     //     explanation why this line is mandatory
     png_set_write_fn( png_ptr, &wxinfo, wx_PNG_stream_writer, NULL);
+
+    if (pText)
+    {
+        time_t gmt; // G.M.T.
+        int i = 0;
+        png_time mod_time;
+        png_text text_ptr[wxPNGTEXT_ENUMCOUNT + 1];
+
+        time(&gmt);
+        png_convert_from_time_t(&mod_time, gmt);
+        png_set_tIME(png_ptr, info_ptr, &mod_time);
+
+        if (pText[wxPNGTEXT_TITLE] && pText[wxPNGTEXT_TITLE][0])
+        {
+            text_ptr[i].key  = (char*)m_text_keys[wxPNGTEXT_TITLE];
+            text_ptr[i].text = (char*)pText[wxPNGTEXT_TITLE];
+            text_ptr[i].compression = PNG_TEXT_COMPRESSION_NONE;
+            i++;
+        }
+        if (pText[wxPNGTEXT_AUTHOR] && pText[wxPNGTEXT_AUTHOR][0])
+        {
+            text_ptr[i].key  = (char*)m_text_keys[wxPNGTEXT_AUTHOR];
+            text_ptr[i].text = (char*)pText[wxPNGTEXT_AUTHOR];
+            text_ptr[i].compression = PNG_TEXT_COMPRESSION_NONE;
+            i++;
+        }
+        if (pText[wxPNGTEXT_DESC] && pText[wxPNGTEXT_DESC][0])
+        {
+            text_ptr[i].key  = (char*)m_text_keys[wxPNGTEXT_DESC];
+            text_ptr[i].text = (char*)pText[wxPNGTEXT_DESC];
+            text_ptr[i].compression = PNG_TEXT_COMPRESSION_NONE;
+            i++;
+        }
+        if (pText[wxPNGTEXT_TIME] && pText[wxPNGTEXT_TIME][0])
+        {
+            text_ptr[i].key  = (char*)m_text_keys[wxPNGTEXT_TIME];
+            text_ptr[i].text = (char*)pText[wxPNGTEXT_TIME];
+            text_ptr[i].compression = PNG_TEXT_COMPRESSION_NONE;
+            i++;
+        }
+        else
+        {
+            text_ptr[i].key  = "Creation Time";
+            text_ptr[i].text = (png_charp)png_convert_to_rfc1123(png_ptr, &mod_time);
+            text_ptr[i].compression = PNG_TEXT_COMPRESSION_NONE;
+            i++;
+        }
+
+        if (pText[wxPNGTEXT_SOFTWARE] && pText[wxPNGTEXT_SOFTWARE][0])
+        {
+            text_ptr[i].key  = (char*)m_text_keys[wxPNGTEXT_SOFTWARE];
+            text_ptr[i].text = (char*)pText[wxPNGTEXT_SOFTWARE];
+            text_ptr[i].compression = PNG_TEXT_COMPRESSION_NONE;
+            i++;
+        }
+
+        if (pText[wxPNGTEXT_COMMENT] && pText[wxPNGTEXT_COMMENT][0])
+        {
+            text_ptr[i].key  = (char*)m_text_keys[wxPNGTEXT_COMMENT];
+            text_ptr[i].text = (char*)pText[wxPNGTEXT_COMMENT];
+            text_ptr[i].compression = PNG_TEXT_COMPRESSION_NONE;
+            i++;
+        }
+
+        if (pText[wxPNGTEXT_COPYRIGHT] && pText[wxPNGTEXT_COPYRIGHT][0])
+        {
+            text_ptr[i].key  = (char*)m_text_keys[wxPNGTEXT_COPYRIGHT];
+            text_ptr[i].text = (char*)pText[wxPNGTEXT_COPYRIGHT];
+            text_ptr[i].compression = PNG_TEXT_COMPRESSION_NONE;
+            i++;
+        }
+
+        png_set_text(png_ptr, info_ptr, text_ptr, i);
+    }
 
     const int iHeight = image->GetHeight();
     const int iWidth = image->GetWidth();
@@ -844,6 +988,18 @@ bool wxPNGHandler::SaveFile( wxImage *image, wxOutputStream& stream, bool verbos
 #endif /* VC++ */
 
 #endif  // wxUSE_STREAMS
+
+wxString wxPNGHandler::MakeTimeString(const wxDateTime& datetime)
+{
+    png_time mod_time;
+    char time_str[29];
+
+    png_convert_from_time_t(&mod_time, datetime.GetTicks());
+    png_convert_to_rfc1123_buffer(time_str, &mod_time);
+
+    wxString str = wxConvertMB2WX(time_str);
+    return str;
+}
 
 /*static*/ wxVersionInfo wxPNGHandler::GetLibraryVersionInfo()
 {

@@ -36,6 +36,18 @@ enum
     wxPNG_TYPE_PALETTE = 4
 };
 
+enum
+{
+    wxPNGTEXT_TITLE,
+    wxPNGTEXT_AUTHOR,
+    wxPNGTEXT_DESC,
+    wxPNGTEXT_COPYRIGHT,
+    wxPNGTEXT_COMMENT,
+    wxPNGTEXT_TIME,
+    wxPNGTEXT_SOFTWARE,
+    wxPNGTEXT_ENUMCOUNT
+};
+
 class WXDLLIMPEXP_CORE wxPNGHandler: public wxImageHandler
 {
 public:
@@ -50,11 +62,26 @@ public:
     static wxVersionInfo GetLibraryVersionInfo();
 
 #if wxUSE_STREAMS
-    virtual bool LoadFile( wxImage *image, wxInputStream& stream, bool verbose=true, int index=-1 ) wxOVERRIDE;
-    virtual bool SaveFile( wxImage *image, wxOutputStream& stream, bool verbose=true ) wxOVERRIDE;
+    virtual bool LoadFile( wxImage *image, wxInputStream& stream, bool verbose = true, int index = -1 )  wxOVERRIDE
+    {
+        return LoadFile(image, stream, verbose, index, m_text_in);
+    }
+    virtual bool SaveFile( wxImage *image, wxOutputStream& stream, bool verbose = true ) wxOVERRIDE
+    {
+        return SaveFile(image, stream, verbose, m_text_out);
+    }
+    bool SaveFile( wxImage *image, wxOutputStream& stream, bool verbose, const char* pText[/*wxPNGTEXT_ENUMCOUNT*/]);
+    bool LoadFile( wxImage *image, wxInputStream& stream, bool verbose, int index, char* pText[/*wxPNGTEXT_ENUMCOUNT*/]);
 protected:
     virtual bool DoCanRead( wxInputStream& stream ) wxOVERRIDE;
 #endif
+
+public:
+    // PNG texts
+    static wxString MakeTimeString(const wxDateTime&);
+    static const char* const m_text_keys[];
+    static       char** m_text_in;
+    static const char** m_text_out;
 
 private:
     wxDECLARE_DYNAMIC_CLASS(wxPNGHandler);

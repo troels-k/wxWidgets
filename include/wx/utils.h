@@ -632,8 +632,6 @@ WXDLLIMPEXP_BASE void wxQsort(void* pbase, size_t total_elems,
 #endif // !wxQSORT_DECLARED
 
 
-#if wxUSE_GUI // GUI only things from now on
-
 // ----------------------------------------------------------------------------
 // Launch default browser
 // ----------------------------------------------------------------------------
@@ -651,6 +649,7 @@ WXDLLIMPEXP_CORE bool wxLaunchDefaultBrowser(const wxString& url, int flags = 0)
 // Launch document in the user's default application
 WXDLLIMPEXP_CORE bool wxLaunchDefaultApplication(const wxString& path, int flags = 0);
 
+#if wxUSE_GUI // GUI only things from now on
 // ----------------------------------------------------------------------------
 // Menu accelerators related things
 // ----------------------------------------------------------------------------

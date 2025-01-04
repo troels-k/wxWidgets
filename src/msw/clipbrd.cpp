@@ -163,7 +163,6 @@ bool wxIsClipboardFormatAvailable(wxDataFormat dataFormat)
 }
 
 
-#if !wxUSE_OLE_CLIPBOARD
 namespace
 {
 struct wxRawImageData
@@ -448,7 +447,6 @@ bool wxSetClipboardData(wxDataFormat dataFormat,
 
     return true;
 }
-#endif // !wxUSE_OLE_CLIPBOARD
 
 wxDataFormat wxEnumClipboardFormats(wxDataFormat dataFormat)
 {
