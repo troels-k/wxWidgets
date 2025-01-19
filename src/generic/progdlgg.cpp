@@ -107,6 +107,10 @@ void wxGenericProgressDialog::Init()
     m_winDisabler = NULL;
     m_tempEventLoop = NULL;
 
+    m_sizerMain = NULL;
+    m_sizerLabels = NULL;
+    m_sizerButton  = NULL;
+
     SetWindowStyle(wxDEFAULT_DIALOG_STYLE);
 }
 
@@ -126,6 +130,8 @@ wxGenericProgressDialog::wxGenericProgressDialog(const wxString& title,
     Init();
 
     Create( title, message, maximum, parent, style );
+
+    PostCreate();
 }
 
 void wxGenericProgressDialog::SetTopParent(wxWindow* parent)
@@ -176,6 +182,57 @@ bool wxGenericProgressDialog::Create( const wxString& title,
 
     m_state = HasPDFlag(wxPD_CAN_ABORT) ? Continue : Uncancelable;
 
+    // top-level sizer
+    wxSizer * const sizerTop = new wxBoxSizer(wxVERTICAL);
+    SetSizer(sizerTop);
+
+    const int sizerFlags = wxEXPAND | wxALL;
+
+    m_sizerMain = CreateMainSizer();
+    if (m_sizerMain)
+        sizerTop->Add(m_sizerMain, 0, sizerFlags, LAYOUT_MARGIN);
+
+    m_sizerLabels = CreateLabelsSizer();
+    if (m_sizerLabels)
+        sizerTop->Add(m_sizerLabels, 0, wxALIGN_CENTER_HORIZONTAL | wxBOTTOM, LAYOUT_MARGIN);
+
+    m_sizerButton = CreateButtonSizer(HasPDFlag(wxPD_CAN_ABORT) ? wxCANCEL : 0);
+    if (m_sizerButton)
+        sizerTop->Add(m_sizerButton, 0, sizerFlags, LAYOUT_MARGIN + LAYOUT_MARGIN/2);
+
+    if (m_msg)
+        m_msg->SetLabel(message);
+
+    sizerTop->SetSizeHints(this);
+
+    //PostCreate()
+
+    return true;
+}
+
+void wxGenericProgressDialog::PostCreate()
+{
+    Centre(wxCENTER_FRAME | wxBOTH);
+
+    DisableOtherWindows();
+
+    Show();
+    Enable();
+
+    // this one can be initialized even if the others are unknown for now
+    //
+    // NB: do it after calling Layout() to keep the labels correctly aligned
+    if ( m_elapsed )
+        SetTimeLabel(0, m_elapsed);
+
+    Update();
+}
+
+wxSizer* wxGenericProgressDialog::CreateMainSizer()
+{
+    int style = m_pdStyle;
+    int maximum = m_maximum;
+
     // top-level sizerTop
     wxSizer * const sizerTop = new wxBoxSizer(wxVERTICAL);
 
@@ -184,7 +241,7 @@ bool wxGenericProgressDialog::Create( const wxString& title,
     // always increase its size to fit the longest message and so we assume
     // that its current size is always this longest size and not some maybe
     // shorter size.
-    m_msg = new wxStaticText(this, wxID_ANY, message,
+    m_msg = new wxStaticText(this, wxID_ANY, "",
                              wxDefaultPosition, wxDefaultSize,
                              wxST_NO_AUTORESIZE);
     sizerTop->Add(m_msg, 0, wxLEFT | wxRIGHT | wxTOP, 2*LAYOUT_MARGIN);
@@ -209,33 +266,51 @@ bool wxGenericProgressDialog::Create( const wxString& title,
                     gauge_style
                   );
 
-    sizerTop->Add(m_gauge, 0, wxLEFT | wxRIGHT | wxTOP | wxEXPAND, 2*LAYOUT_MARGIN);
+    sizerTop->Add(m_gauge, 0, wxALL | wxEXPAND, LAYOUT_MARGIN);
     m_gauge->SetValue(0);
+    return sizerTop;
+}
+
+wxSizer* wxGenericProgressDialog::CreateLabelsSizer()
+{
+    int style = m_pdStyle;
 
     // create the estimated/remaining/total time zones if requested
     m_elapsed =
     m_estimated =
     m_remaining = NULL;
 
-    wxSizer * const sizerLabels = new wxFlexGridSizer(2);
+    // also count how many labels we really have
+    size_t nTimeLabels = 0;
+
+    wxSizer * const sizerLabels = new wxFlexGridSizer(0, 2, LAYOUT_MARGIN, LAYOUT_MARGIN);
 
     if ( style & wxPD_ELAPSED_TIME )
     {
+        nTimeLabels++;
+
         m_elapsed = CreateLabel(GetElapsedLabel(), sizerLabels);
     }
 
     if ( style & wxPD_ESTIMATED_TIME )
     {
+        nTimeLabels++;
+
         m_estimated = CreateLabel(GetEstimatedLabel(), sizerLabels);
     }
 
     if ( style & wxPD_REMAINING_TIME )
     {
+        nTimeLabels++;
+
         m_remaining = CreateLabel(GetRemainingLabel(), sizerLabels);
     }
-    sizerTop->Add(sizerLabels, 0, wxALIGN_CENTER_HORIZONTAL | wxTOP, LAYOUT_MARGIN);
+    return sizerLabels;
+}
 
-    wxStdDialogButtonSizer *buttonSizer = wxDialog::CreateStdDialogButtonSizer(0);
+wxSizer* wxGenericProgressDialog::CreateButtonSizer(long flags)
+{
+    wxStdDialogButtonSizer *buttonSizer = wxDialog::CreateStdDialogButtonSizer(flags);
 
     const int borderFlags = wxALL;
 
@@ -246,42 +321,27 @@ bool wxGenericProgressDialog::Create( const wxString& title,
     {
         m_btnSkip = new wxButton(this, wxID_SKIP, _("&Skip"));
 
-        buttonSizer->SetNegativeButton(m_btnSkip);
+        size_t index = buttonSizer->GetItemCount() ? (buttonSizer->GetItemCount() - 1) : 0;
+
+        buttonSizer->Insert(index, m_btnSkip, sizerFlags);
+        //buttonSizer->Insert(index, m_btnSkip, 0, sizerFlags, LAYOUT_MARGIN);
     }
 
+    /*
     if ( HasPDFlag(wxPD_CAN_ABORT) )
     {
         m_btnAbort = new wxButton(this, wxID_CANCEL);
 
         buttonSizer->SetCancelButton(m_btnAbort);
     }
+    */
+    m_btnAbort = (wxButton*)FindWindow(wxID_CANCEL); // may be NULL
+
 
     if ( !HasPDFlag(wxPD_CAN_SKIP | wxPD_CAN_ABORT) )
         buttonSizer->AddSpacer(LAYOUT_MARGIN);
 
-    buttonSizer->Realize();
-
-    sizerTop->Add(buttonSizer, sizerFlags.Expand());
-
-    SetSizerAndFit(sizerTop);
-
-    Centre(wxCENTER_FRAME | wxBOTH);
-
-    DisableOtherWindows();
-
-    Show();
-    Enable();
-
-    // this one can be initialized even if the others are unknown for now
-    //
-    // NB: do it after calling Layout() to keep the labels correctly aligned
-    if ( m_elapsed )
-    {
-        SetTimeLabel(0, m_elapsed);
-    }
-
-    Update();
-    return true;
+    return buttonSizer;
 }
 
 void wxGenericProgressDialog::UpdateTimeEstimates(int value,

@@ -73,6 +73,15 @@ public:
         Dismissed            // was closed by user after finishing
     };
 
+    // return the sizer holding the static text and the gauge
+    wxSizer* GetMainSizer() const { return m_sizerMain; }
+
+    // return the sizer holding the progress texts
+    wxSizer* GetLabelsSizer() const { return m_sizerLabels; }
+
+    // return the button sizer
+    wxSizer* GetButtonSizer() const { return m_sizerButton; }
+
 protected:
     // Update just the m_maximum field, this is used by public SetRange() but,
     // unlike it, doesn't update the controls state. This makes it useful for
@@ -131,6 +140,14 @@ protected:
     // return the top level parent window of this dialog (may be NULL)
     wxWindow *GetTopParent() const { return m_parentTop; }
 
+    // create the sizer holding the static text and the gauge
+    virtual wxSizer* CreateMainSizer();
+
+    // create the sizer holding the progress texts
+    virtual wxSizer* CreateLabelsSizer();
+
+    // create the button sizer
+    virtual wxSizer* CreateButtonSizer(long flags);
 
     // continue processing or not (return value for Update())
     State m_state;
@@ -151,12 +168,23 @@ protected:
     // time between the moment the dialog was closed/cancelled and resume
     unsigned long m_break;
 
+    // sizer holding the static text and the gauge
+    wxSizer* m_sizerMain;
+
+    // sizer holding the progress texts
+    wxSizer* m_sizerLabels;
+
+    // button sizer
+    wxSizer* m_sizerButton;
+
 private:
     // update the label to show the given time (in seconds)
     static void SetTimeLabel(unsigned long val, wxStaticText *label);
 
     // common part of all ctors
     void Init();
+
+    void PostCreate();
 
     // create the label with given text and another one to show the time nearby
     // as the next windows in the sizer, returns the created control
